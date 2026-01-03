@@ -212,27 +212,42 @@ wss.on("connection", (ws) => {
       if (!rooms[roomId]) rooms[roomId] = new Map();
       rooms[roomId].set(ws.id, ws);
 
-      // Send existing users to new user
-      const users = [...rooms[roomId].keys()].filter(id => id !== ws.id);
-      ws.send(JSON.stringify({ type: "existing-users", payload: users }));
+      // send existing users to new user
+      const existingUsers = [...rooms[roomId].keys()].filter(
+        (id) => id !== ws.id
+      );
 
-      // Notify others
+      ws.send(
+        JSON.stringify({
+          type: "existing-users",
+          payload: existingUsers,
+        })
+      );
+
+      // notify others about new user
       rooms[roomId].forEach((client, id) => {
         if (id !== ws.id) {
-          client.send(JSON.stringify({
-            type: "user-joined",
-            payload: ws.id
-          }));
+          client.send(
+            JSON.stringify({
+              type: "user-joined",
+              payload: ws.id,
+            })
+          );
         }
       });
     }
 
     if (type === "signal") {
       const target = rooms[roomId]?.get(payload.target);
-      target?.send(JSON.stringify({
-        type: "signal",
-        payload: { from: ws.id, data: payload.data }
-      }));
+      target?.send(
+        JSON.stringify({
+          type: "signal",
+          payload: {
+            from: ws.id,
+            data: payload.data,
+          },
+        })
+      );
     }
   });
 
@@ -241,18 +256,20 @@ wss.on("connection", (ws) => {
     if (!room) return;
 
     room.delete(ws.id);
-    room.forEach(client => {
-      client.send(JSON.stringify({
-        type: "user-left",
-        payload: ws.id
-      }));
-    });
+    room.forEach((client) =>
+      client.send(
+        JSON.stringify({
+          type: "user-left",
+          payload: ws.id,
+        })
+      )
+    );
 
     if (room.size === 0) delete rooms[ws.roomId];
   });
 });
 
-app.get("/", (_, res) => res.send("✅ WebRTC Signaling Server"));
-
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log("🚀 Backend running on", PORT));
+server.listen(PORT, () =>
+  console.log("🚀 WebRTC signaling server running on", PORT)
+);
