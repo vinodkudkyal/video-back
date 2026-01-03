@@ -117,10 +117,80 @@
 
 
 
+// import http from "http";
+// import express from "express";
+// import { WebSocketServer } from "ws";
+// import cors from "cors";
+
+// const app = express();
+// app.use(cors());
+
+// const server = http.createServer(app);
+// const wss = new WebSocketServer({ server });
+
+// /**
+//  * rooms = {
+//  *   roomId: Set<WebSocket>
+//  * }
+//  */
+// const rooms = {};
+
+// wss.on("connection", (ws) => {
+//   ws.on("message", (msg) => {
+//     const data = JSON.parse(msg);
+//     const { type, roomId, payload } = data;
+
+//     if (type === "join") {
+//       ws.roomId = roomId;
+
+//       if (!rooms[roomId]) rooms[roomId] = new Set();
+//       rooms[roomId].add(ws);
+
+//       // notify existing users
+//       rooms[roomId].forEach((client) => {
+//         if (client !== ws) {
+//           client.send(JSON.stringify({ type: "new-user" }));
+//         }
+//       });
+//     }
+
+//     if (type === "signal") {
+//       rooms[roomId]?.forEach((client) => {
+//         if (client !== ws) {
+//           client.send(JSON.stringify({
+//             type: "signal",
+//             payload
+//           }));
+//         }
+//       });
+//     }
+//   });
+
+//   ws.on("close", () => {
+//     const roomId = ws.roomId;
+//     if (!roomId) return;
+
+//     rooms[roomId]?.delete(ws);
+//     if (rooms[roomId]?.size === 0) delete rooms[roomId];
+//   });
+// });
+
+// app.get("/", (_, res) => {
+//   res.send("✅ Video Call WebSocket Server Running");
+// });
+
+// const PORT = process.env.PORT || 5000;
+// server.listen(PORT, () =>
+//   console.log(`🚀 Backend running on port ${PORT}`)
+// );
+
+
+
 import http from "http";
 import express from "express";
 import { WebSocketServer } from "ws";
 import cors from "cors";
+import { randomUUID } from "crypto";
 
 const app = express();
 app.use(cors());
@@ -128,58 +198,61 @@ app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-/**
- * rooms = {
- *   roomId: Set<WebSocket>
- * }
- */
-const rooms = {};
+const rooms = {}; // roomId -> Map(socketId, ws)
 
 wss.on("connection", (ws) => {
+  ws.id = randomUUID();
+
   ws.on("message", (msg) => {
-    const data = JSON.parse(msg);
-    const { type, roomId, payload } = data;
+    const { type, roomId, payload } = JSON.parse(msg);
 
     if (type === "join") {
       ws.roomId = roomId;
 
-      if (!rooms[roomId]) rooms[roomId] = new Set();
-      rooms[roomId].add(ws);
+      if (!rooms[roomId]) rooms[roomId] = new Map();
+      rooms[roomId].set(ws.id, ws);
 
-      // notify existing users
-      rooms[roomId].forEach((client) => {
-        if (client !== ws) {
-          client.send(JSON.stringify({ type: "new-user" }));
+      // Send existing users to new user
+      const users = [...rooms[roomId].keys()].filter(id => id !== ws.id);
+      ws.send(JSON.stringify({ type: "existing-users", payload: users }));
+
+      // Notify others
+      rooms[roomId].forEach((client, id) => {
+        if (id !== ws.id) {
+          client.send(JSON.stringify({
+            type: "user-joined",
+            payload: ws.id
+          }));
         }
       });
     }
 
     if (type === "signal") {
-      rooms[roomId]?.forEach((client) => {
-        if (client !== ws) {
-          client.send(JSON.stringify({
-            type: "signal",
-            payload
-          }));
-        }
-      });
+      const target = rooms[roomId]?.get(payload.target);
+      target?.send(JSON.stringify({
+        type: "signal",
+        payload: { from: ws.id, data: payload.data }
+      }));
     }
   });
 
   ws.on("close", () => {
-    const roomId = ws.roomId;
-    if (!roomId) return;
+    const room = rooms[ws.roomId];
+    if (!room) return;
 
-    rooms[roomId]?.delete(ws);
-    if (rooms[roomId]?.size === 0) delete rooms[roomId];
+    room.delete(ws.id);
+    room.forEach(client => {
+      client.send(JSON.stringify({
+        type: "user-left",
+        payload: ws.id
+      }));
+    });
+
+    if (room.size === 0) delete rooms[ws.roomId];
   });
 });
 
-app.get("/", (_, res) => {
-  res.send("✅ Video Call WebSocket Server Running");
-});
+app.get("/", (_, res) => res.send("✅ WebRTC Signaling Server"));
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`🚀 Backend running on port ${PORT}`)
-);
+server.listen(PORT, () => console.log("🚀 Backend running on", PORT));
