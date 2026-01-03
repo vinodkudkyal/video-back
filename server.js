@@ -59,8 +59,66 @@
 
 
 
-import express from "express";
+// import express from "express";
+// import http from "http";
+// import { WebSocketServer } from "ws";
+// import cors from "cors";
+
+// const app = express();
+// app.use(cors());
+
+// const server = http.createServer(app);
+// const wss = new WebSocketServer({ server });
+
+// const rooms = {};
+
+// wss.on("connection", (ws) => {
+//   ws.on("message", (msg) => {
+//     const data = JSON.parse(msg);
+//     const { type, roomId, payload } = data;
+
+//     if (type === "join") {
+//       if (!rooms[roomId]) rooms[roomId] = [];
+//       rooms[roomId].push(ws);
+//       ws.roomId = roomId;
+
+//       rooms[roomId].forEach((client) => {
+//         if (client !== ws) {
+//           client.send(JSON.stringify({ type: "user-joined" }));
+//         }
+//       });
+//     }
+
+//     if (type === "signal") {
+//       rooms[roomId]?.forEach((client) => {
+//         if (client !== ws) {
+//           client.send(JSON.stringify({ type: "signal", payload }));
+//         }
+//       });
+//     }
+//   });
+
+//   ws.on("close", () => {
+//     const roomId = ws.roomId;
+//     if (!roomId) return;
+//     rooms[roomId] = rooms[roomId]?.filter((c) => c !== ws);
+//     if (rooms[roomId]?.length === 0) delete rooms[roomId];
+//   });
+// });
+
+// app.get("/", (_, res) => {
+//   res.send("WebSocket Video Call Backend Running");
+// });
+
+// const PORT = process.env.PORT || 5000;
+// server.listen(PORT, () =>
+//   console.log(`🚀 Backend running on port ${PORT}`)
+// );
+
+
+
 import http from "http";
+import express from "express";
 import { WebSocketServer } from "ws";
 import cors from "cors";
 
@@ -70,6 +128,11 @@ app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
+/**
+ * rooms = {
+ *   roomId: Set<WebSocket>
+ * }
+ */
 const rooms = {};
 
 wss.on("connection", (ws) => {
@@ -78,13 +141,15 @@ wss.on("connection", (ws) => {
     const { type, roomId, payload } = data;
 
     if (type === "join") {
-      if (!rooms[roomId]) rooms[roomId] = [];
-      rooms[roomId].push(ws);
       ws.roomId = roomId;
 
+      if (!rooms[roomId]) rooms[roomId] = new Set();
+      rooms[roomId].add(ws);
+
+      // notify existing users
       rooms[roomId].forEach((client) => {
         if (client !== ws) {
-          client.send(JSON.stringify({ type: "user-joined" }));
+          client.send(JSON.stringify({ type: "new-user" }));
         }
       });
     }
@@ -92,7 +157,10 @@ wss.on("connection", (ws) => {
     if (type === "signal") {
       rooms[roomId]?.forEach((client) => {
         if (client !== ws) {
-          client.send(JSON.stringify({ type: "signal", payload }));
+          client.send(JSON.stringify({
+            type: "signal",
+            payload
+          }));
         }
       });
     }
@@ -101,13 +169,14 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     const roomId = ws.roomId;
     if (!roomId) return;
-    rooms[roomId] = rooms[roomId]?.filter((c) => c !== ws);
-    if (rooms[roomId]?.length === 0) delete rooms[roomId];
+
+    rooms[roomId]?.delete(ws);
+    if (rooms[roomId]?.size === 0) delete rooms[roomId];
   });
 });
 
 app.get("/", (_, res) => {
-  res.send("WebSocket Video Call Backend Running");
+  res.send("✅ Video Call WebSocket Server Running");
 });
 
 const PORT = process.env.PORT || 5000;
