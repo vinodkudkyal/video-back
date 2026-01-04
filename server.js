@@ -186,90 +186,133 @@
 
 
 
-import http from "http";
-import express from "express";
-import { WebSocketServer } from "ws";
-import cors from "cors";
-import { randomUUID } from "crypto";
+// import http from "http";
+// import express from "express";
+// import { WebSocketServer } from "ws";
+// import cors from "cors";
+// import { randomUUID } from "crypto";
+
+// const app = express();
+// app.use(cors());
+
+// const server = http.createServer(app);
+// const wss = new WebSocketServer({ server });
+
+// const rooms = {}; // roomId -> Map(socketId, ws)
+
+// wss.on("connection", (ws) => {
+//   ws.id = randomUUID();
+
+//   ws.on("message", (msg) => {
+//     const { type, roomId, payload } = JSON.parse(msg);
+
+//     if (type === "join") {
+//       ws.roomId = roomId;
+
+//       if (!rooms[roomId]) rooms[roomId] = new Map();
+//       rooms[roomId].set(ws.id, ws);
+
+//       // send existing users to new user
+//       const existingUsers = [...rooms[roomId].keys()].filter(
+//         (id) => id !== ws.id
+//       );
+
+//       ws.send(
+//         JSON.stringify({
+//           type: "existing-users",
+//           payload: existingUsers,
+//         })
+//       );
+
+//       // notify others about new user
+//       rooms[roomId].forEach((client, id) => {
+//         if (id !== ws.id) {
+//           client.send(
+//             JSON.stringify({
+//               type: "user-joined",
+//               payload: ws.id,
+//             })
+//           );
+//         }
+//       });
+//     }
+
+//     if (type === "signal") {
+//       const target = rooms[roomId]?.get(payload.target);
+//       target?.send(
+//         JSON.stringify({
+//           type: "signal",
+//           payload: {
+//             from: ws.id,
+//             data: payload.data,
+//           },
+//         })
+//       );
+//     }
+//   });
+
+//   ws.on("close", () => {
+//     const room = rooms[ws.roomId];
+//     if (!room) return;
+
+//     room.delete(ws.id);
+//     room.forEach((client) =>
+//       client.send(
+//         JSON.stringify({
+//           type: "user-left",
+//           payload: ws.id,
+//         })
+//       )
+//     );
+
+//     if (room.size === 0) delete rooms[ws.roomId];
+//   });
+// });
+
+// const PORT = process.env.PORT || 5000;
+// server.listen(PORT, () =>
+//   console.log("🚀 WebRTC signaling server running on", PORT)
+// );
+
+
+
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
-
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
 
-const rooms = {}; // roomId -> Map(socketId, ws)
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
-wss.on("connection", (ws) => {
-  ws.id = randomUUID();
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
 
-  ws.on("message", (msg) => {
-    const { type, roomId, payload } = JSON.parse(msg);
-
-    if (type === "join") {
-      ws.roomId = roomId;
-
-      if (!rooms[roomId]) rooms[roomId] = new Map();
-      rooms[roomId].set(ws.id, ws);
-
-      // send existing users to new user
-      const existingUsers = [...rooms[roomId].keys()].filter(
-        (id) => id !== ws.id
-      );
-
-      ws.send(
-        JSON.stringify({
-          type: "existing-users",
-          payload: existingUsers,
-        })
-      );
-
-      // notify others about new user
-      rooms[roomId].forEach((client, id) => {
-        if (id !== ws.id) {
-          client.send(
-            JSON.stringify({
-              type: "user-joined",
-              payload: ws.id,
-            })
-          );
-        }
-      });
-    }
-
-    if (type === "signal") {
-      const target = rooms[roomId]?.get(payload.target);
-      target?.send(
-        JSON.stringify({
-          type: "signal",
-          payload: {
-            from: ws.id,
-            data: payload.data,
-          },
-        })
-      );
-    }
+  socket.on("join-room", (roomId) => {
+    socket.join(roomId);
+    socket.to(roomId).emit("user-joined", socket.id);
   });
 
-  ws.on("close", () => {
-    const room = rooms[ws.roomId];
-    if (!room) return;
+  socket.on("offer", ({ roomId, offer }) => {
+    socket.to(roomId).emit("offer", offer);
+  });
 
-    room.delete(ws.id);
-    room.forEach((client) =>
-      client.send(
-        JSON.stringify({
-          type: "user-left",
-          payload: ws.id,
-        })
-      )
-    );
+  socket.on("answer", ({ roomId, answer }) => {
+    socket.to(roomId).emit("answer", answer);
+  });
 
-    if (room.size === 0) delete rooms[ws.roomId];
+  socket.on("ice-candidate", ({ roomId, candidate }) => {
+    socket.to(roomId).emit("ice-candidate", candidate);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
   });
 });
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
-  console.log("🚀 WebRTC signaling server running on", PORT)
+  console.log("🚀 Server running on port", PORT)
 );
