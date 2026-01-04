@@ -276,6 +276,73 @@
 
 
 
+// const express = require("express");
+// const http = require("http");
+// const { Server } = require("socket.io");
+
+// const app = express();
+// const server = http.createServer(app);
+
+// const io = new Server(server, {
+//   cors: { origin: "*" }
+// });
+
+// const users = {}; // socketId -> { name, room }
+
+// io.on("connection", (socket) => {
+
+//   socket.on("join-room", ({ roomId, name }) => {
+//     users[socket.id] = { name, room: roomId };
+//     socket.join(roomId);
+
+//     const roomUsers = Object.entries(users)
+//       .filter(([_, u]) => u.room === roomId)
+//       .map(([id, u]) => ({ id, name: u.name }));
+
+//     socket.emit("all-users", roomUsers);
+//     socket.to(roomId).emit("user-joined", {
+//       id: socket.id,
+//       name
+//     });
+//   });
+
+//   socket.on("offer", ({ to, offer }) => {
+//     socket.to(to).emit("offer", {
+//       from: socket.id,
+//       offer,
+//       name: users[socket.id].name
+//     });
+//   });
+
+//   socket.on("answer", ({ to, answer }) => {
+//     socket.to(to).emit("answer", {
+//       from: socket.id,
+//       answer
+//     });
+//   });
+
+//   socket.on("ice-candidate", ({ to, candidate }) => {
+//     socket.to(to).emit("ice-candidate", {
+//       from: socket.id,
+//       candidate
+//     });
+//   });
+
+//   socket.on("disconnect", () => {
+//     const user = users[socket.id];
+//     if (user) {
+//       socket.to(user.room).emit("user-left", socket.id);
+//       delete users[socket.id];
+//     }
+//   });
+// });
+
+// server.listen(5000, () =>
+//   console.log("🚀 Server running on 5000")
+// );
+
+
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -284,35 +351,65 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*",   // Render-safe
+    methods: ["GET", "POST"]
+  }
 });
 
+const users = {}; // socketId -> { name, room }
+
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("Connected:", socket.id);
 
-  socket.on("join-room", (roomId) => {
+  socket.on("join-room", ({ roomId, name }) => {
+    users[socket.id] = { name, room: roomId };
     socket.join(roomId);
-    socket.to(roomId).emit("user-joined", socket.id);
+
+    const roomUsers = Object.entries(users)
+      .filter(([_, u]) => u.room === roomId)
+      .map(([id, u]) => ({ id, name: u.name }));
+
+    socket.emit("all-users", roomUsers);
+
+    socket.to(roomId).emit("user-joined", {
+      id: socket.id,
+      name
+    });
   });
 
-  socket.on("offer", ({ roomId, offer }) => {
-    socket.to(roomId).emit("offer", offer);
+  socket.on("offer", ({ to, offer }) => {
+    socket.to(to).emit("offer", {
+      from: socket.id,
+      offer,
+      name: users[socket.id]?.name
+    });
   });
 
-  socket.on("answer", ({ roomId, answer }) => {
-    socket.to(roomId).emit("answer", answer);
+  socket.on("answer", ({ to, answer }) => {
+    socket.to(to).emit("answer", {
+      from: socket.id,
+      answer
+    });
   });
 
-  socket.on("ice-candidate", ({ roomId, candidate }) => {
-    socket.to(roomId).emit("ice-candidate", candidate);
+  socket.on("ice-candidate", ({ to, candidate }) => {
+    socket.to(to).emit("ice-candidate", {
+      from: socket.id,
+      candidate
+    });
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    const user = users[socket.id];
+    if (user) {
+      socket.to(user.room).emit("user-left", socket.id);
+      delete users[socket.id];
+    }
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () =>
-  console.log("🚀 Server running on port", PORT)
+  console.log("🚀 Backend running on", PORT)
 );
